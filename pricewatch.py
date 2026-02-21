@@ -194,11 +194,49 @@ def send_email_alert(smtp_host: str, smtp_port: int, smtp_user: str, smtp_passwo
         server.send_message(msg)
 
 
+def _format_price_change(previous: float | None, current: float) -> str:
+    if previous is None:
+        return "ingen sammenligning (første måling)"
+    change = current - previous
+    if change == 0:
+        return f"uændret (0.00 DKK, i går: {previous:.2f} DKK)"
+    sign = "+" if change > 0 else ""
+    return f"ændring: {sign}{change:.2f} DKK (i går: {previous:.2f} DKK)"
+
+
+def build_daily_report(check_rows: list[dict[str, Any]]) -> str:
+    lines = [
+        f"PriceWatch daglig rapport ({dt.datetime.now(dt.UTC).date().isoformat()})",
+        "",
+    ]
+    if not check_rows:
+        lines.append("Ingen links blev tjekket i dag.")
+        return "\n".join(lines)
+
+    for row in check_rows:
+        if row["status"] == "ok":
+            lines.append(
+                f"- {row['product_name']}\n"
+                f"  Link: {row['url']}\n"
+                f"  Pris i dag: {row['price']:.2f} DKK\n"
+                f"  {row['change_text']}"
+            )
+        else:
+            lines.append(
+                f"- {row['product_name']}\n"
+                f"  Link: {row['url']}\n"
+                f"  Status: FEJL ({row['message']})"
+            )
+    return "\n".join(lines)
+
+
 def check_all(store: JsonStore, cooldown_h: int, email: str | None, smtp_host: str | None, smtp_port: int, smtp_user: str | None, smtp_password: str | None) -> None:
     products = store.products()
     if not products:
         print("Ingen produkter. Tilføj med 'add-product' først.")
         return
+
+    daily_rows: list[dict[str, Any]] = []
 
     for p in products:
         links = store.links_for_product(p["id"])
@@ -213,25 +251,53 @@ def check_all(store: JsonStore, cooldown_h: int, email: str | None, smtp_host: s
                 if price is None:
                     store.save_check(p["id"], link["id"], link["url"], "error", None, "No price found")
                     print(f"⚠️  Ingen pris fundet: {p['name']} | {link['url']}")
+                    daily_rows.append(
+                        {
+                            "product_name": p["name"],
+                            "url": link["url"],
+                            "status": "error",
+                            "message": "No price found",
+                        }
+                    )
                     continue
 
                 store.save_check(p["id"], link["id"], link["url"], "ok", price)
                 previous = store.previous_ok_price(link["id"])
                 print(f"✅ {p['name']} ({link['url']}): {price:.2f} DKK")
+                daily_rows.append(
+                    {
+                        "product_name": p["name"],
+                        "url": link["url"],
+                        "status": "ok",
+                        "price": price,
+                        "change_text": _format_price_change(previous, price),
+                    }
+                )
 
                 if should_alert(p.get("last_alert_at"), cooldown_h, previous, price):
                     text = f"Prisen er faldet for {p['name']}\nLink: {link['url']}\nFør: {previous:.2f} DKK\nNu: {price:.2f} DKK"
                     print(f"🔔 {text}")
-                    if email and smtp_host and smtp_user and smtp_password:
-                        try:
-                            send_email_alert(smtp_host, smtp_port, smtp_user, smtp_password, email, f"PriceWatch: prisfald på {p['name']}", text)
-                            print(f"📧 Email sendt til {email}")
-                        except Exception as exc:  # runtime-only smtp errors
-                            print(f"❌ Kunne ikke sende email: {exc}")
                     store.mark_alert_sent(p["id"])
             except urllib.error.URLError as exc:
                 store.save_check(p["id"], link["id"], link["url"], "error", None, str(exc))
                 print(f"❌ Fejl ved hentning: {p['name']} | {exc}")
+                daily_rows.append(
+                    {
+                        "product_name": p["name"],
+                        "url": link["url"],
+                        "status": "error",
+                        "message": str(exc),
+                    }
+                )
+
+    if email and smtp_host and smtp_user and smtp_password:
+        subject = f"PriceWatch daglig rapport ({dt.datetime.now(dt.UTC).date().isoformat()})"
+        body = build_daily_report(daily_rows)
+        try:
+            send_email_alert(smtp_host, smtp_port, smtp_user, smtp_password, email, subject, body)
+            print(f"📧 Daglig rapport sendt til {email}")
+        except Exception as exc:  # runtime-only smtp errors
+            print(f"❌ Kunne ikke sende daglig email: {exc}")
 
 
 def cmd_add_product(args: argparse.Namespace) -> None:

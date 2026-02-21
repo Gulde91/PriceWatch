@@ -8,7 +8,7 @@ Løsningen matcher dine krav:
 - **Pris gemmes ved hver kørsel** i en simpel **JSON tekstfil**.
 - **Alarm ved hvert prisfald** (med cooldown for støjfilter).
 - **Daglig kørsel** som standard i `watch`.
-- **Email-notifikationer** via SMTP.
+- **Daglig email-rapport** via SMTP med pris i dag + ændring ift. i går.
 
 ## Datafil
 
@@ -46,7 +46,7 @@ Alternativt anbefales cron én gang i døgnet.
 
 ## Email-notifikation
 
-Ved prisfald kan scriptet sende mail:
+Scriptet sender en daglig mail (når SMTP-parametre gives) med dagens pris og ændring ift. dagen før for hvert link:
 
 ```bash
 python3 pricewatch.py check \
