@@ -40,7 +40,10 @@ class PriceWatchTests(unittest.TestCase):
             self.assertEqual(len(links), 2)
 
     def test_daily_change_text(self):
-        self.assertEqual(_format_price_change(None, 100.0), "ingen sammenligning (første måling)")
+        self.assertEqual(
+            _format_price_change(None, 100.0),
+            "ingen sammenligning (ingen tidligere pris fra en tidligere dag)",
+        )
         self.assertEqual(_format_price_change(100.0, 100.0), "uændret (0.00 DKK, i går: 100.00 DKK)")
         self.assertEqual(_format_price_change(100.0, 95.0), "ændring: -5.00 DKK (i går: 100.00 DKK)")
 
@@ -58,6 +61,42 @@ class PriceWatchTests(unittest.TestCase):
         )
         self.assertIn("Pris i dag: 499.00 DKK", report)
         self.assertIn("ændring: -10.00 DKK", report)
+
+    def test_previous_ok_price_before_date_ignores_same_day_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            store.data["checks"] = [
+                {
+                    "checked_at": "2026-01-10T08:00:00+00:00",
+                    "product_id": 1,
+                    "link_id": 1,
+                    "url": "https://example.com/a",
+                    "status": "ok",
+                    "price": 100.0,
+                    "message": None,
+                },
+                {
+                    "checked_at": "2026-01-11T08:00:00+00:00",
+                    "product_id": 1,
+                    "link_id": 1,
+                    "url": "https://example.com/a",
+                    "status": "ok",
+                    "price": 95.0,
+                    "message": None,
+                },
+                {
+                    "checked_at": "2026-01-11T14:00:00+00:00",
+                    "product_id": 1,
+                    "link_id": 1,
+                    "url": "https://example.com/a",
+                    "status": "ok",
+                    "price": 90.0,
+                    "message": None,
+                },
+            ]
+            previous = store.previous_ok_price_before_date(1, "2026-01-11T14:00:00+00:00")
+            self.assertEqual(previous, 100.0)
 
 
 if __name__ == "__main__":

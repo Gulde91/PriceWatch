@@ -10,6 +10,13 @@ Løsningen matcher dine krav:
 - **Daglig kørsel** som standard i `watch`.
 - **Daglig email-rapport** via SMTP med pris i dag + ændring ift. i går.
 
+## Vurdering og forbedringer
+
+Efter gennemgang af kode + dokumentation er disse forbedringer lavet:
+- Sammenligning i daglig email er nu eksplicit mod **seneste pris fra en tidligere dag** (ikke en ekstra kørsel samme dag).
+- Robusthed ved datafil: ugyldig JSON flyttes til `*.corrupt`, og scriptet starter videre med en ren datafil.
+- Bedre CLI-fejlbesked ved `add-link`, hvis produkt-id ikke findes eller URL allerede eksisterer.
+
 ## Datafil
 
 Scriptet gemmer alt i `pricewatch_data.json` i projektmappen.

@@ -54,10 +54,29 @@ class JsonStore:
             "meta": {"next_product_id": 1, "next_link_id": 1},
         }
 
+    def _normalize_loaded(self, raw: dict[str, Any]) -> dict[str, Any]:
+        data = self._empty()
+        data["products"] = list(raw.get("products", []))
+        data["links"] = list(raw.get("links", []))
+        data["checks"] = list(raw.get("checks", []))
+        raw_meta = raw.get("meta", {}) if isinstance(raw.get("meta", {}), dict) else {}
+        data["meta"]["next_product_id"] = int(raw_meta.get("next_product_id", 1))
+        data["meta"]["next_link_id"] = int(raw_meta.get("next_link_id", 1))
+        return data
+
     def _load(self) -> dict[str, Any]:
         if not self.path.exists():
             return self._empty()
-        return json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("JSON root must be object")
+            return self._normalize_loaded(raw)
+        except Exception:
+            backup = self.path.with_suffix(self.path.suffix + ".corrupt")
+            self.path.replace(backup)
+            print(f"⚠️  Datafil var ugyldig JSON. Backup gemt som {backup.name}. Ny fil oprettes.")
+            return self._empty()
 
     def save(self) -> None:
         self.path.write_text(json.dumps(self.data, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -88,13 +107,19 @@ class JsonStore:
     def links_for_product(self, product_id: int) -> list[dict[str, Any]]:
         return [l for l in self.data["links"] if l["product_id"] == product_id]
 
-    def all_links(self) -> list[dict[str, Any]]:
-        return list(self.data["links"])
-
-    def save_check(self, product_id: int, link_id: int, url: str, status: str, price: float | None, message: str | None = None) -> None:
+    def save_check(
+        self,
+        product_id: int,
+        link_id: int,
+        url: str,
+        status: str,
+        price: float | None,
+        message: str | None = None,
+    ) -> str:
+        checked_at = utc_now()
         self.data["checks"].append(
             {
-                "checked_at": utc_now(),
+                "checked_at": checked_at,
                 "product_id": product_id,
                 "link_id": link_id,
                 "url": url,
@@ -104,12 +129,31 @@ class JsonStore:
             }
         )
         self.save()
+        return checked_at
 
     def previous_ok_price(self, link_id: int) -> float | None:
         ok_rows = [c for c in self.data["checks"] if c["link_id"] == link_id and c["status"] == "ok" and c["price"] is not None]
         if len(ok_rows) < 2:
             return None
         return float(ok_rows[-2]["price"])
+
+    def previous_ok_price_before_date(self, link_id: int, current_checked_at: str) -> float | None:
+        current_date = dt.datetime.fromisoformat(current_checked_at).date()
+        best: float | None = None
+        best_dt: dt.datetime | None = None
+        for row in self.data["checks"]:
+            if row.get("link_id") != link_id or row.get("status") != "ok" or row.get("price") is None:
+                continue
+            checked_at_raw = row.get("checked_at")
+            if not isinstance(checked_at_raw, str):
+                continue
+            checked_at = dt.datetime.fromisoformat(checked_at_raw)
+            if checked_at.date() >= current_date:
+                continue
+            if best_dt is None or checked_at > best_dt:
+                best_dt = checked_at
+                best = float(row["price"])
+        return best
 
     def mark_alert_sent(self, product_id: int) -> None:
         for p in self.data["products"]:
@@ -196,7 +240,7 @@ def send_email_alert(smtp_host: str, smtp_port: int, smtp_user: str, smtp_passwo
 
 def _format_price_change(previous: float | None, current: float) -> str:
     if previous is None:
-        return "ingen sammenligning (første måling)"
+        return "ingen sammenligning (ingen tidligere pris fra en tidligere dag)"
     change = current - previous
     if change == 0:
         return f"uændret (0.00 DKK, i går: {previous:.2f} DKK)"
@@ -230,7 +274,15 @@ def build_daily_report(check_rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def check_all(store: JsonStore, cooldown_h: int, email: str | None, smtp_host: str | None, smtp_port: int, smtp_user: str | None, smtp_password: str | None) -> None:
+def check_all(
+    store: JsonStore,
+    cooldown_h: int,
+    email: str | None,
+    smtp_host: str | None,
+    smtp_port: int,
+    smtp_user: str | None,
+    smtp_password: str | None,
+) -> None:
     products = store.products()
     if not products:
         print("Ingen produkter. Tilføj med 'add-product' først.")
@@ -261,8 +313,9 @@ def check_all(store: JsonStore, cooldown_h: int, email: str | None, smtp_host: s
                     )
                     continue
 
-                store.save_check(p["id"], link["id"], link["url"], "ok", price)
-                previous = store.previous_ok_price(link["id"])
+                checked_at = store.save_check(p["id"], link["id"], link["url"], "ok", price)
+                previous_for_drop = store.previous_ok_price(link["id"])
+                previous_for_report = store.previous_ok_price_before_date(link["id"], checked_at)
                 print(f"✅ {p['name']} ({link['url']}): {price:.2f} DKK")
                 daily_rows.append(
                     {
@@ -270,12 +323,12 @@ def check_all(store: JsonStore, cooldown_h: int, email: str | None, smtp_host: s
                         "url": link["url"],
                         "status": "ok",
                         "price": price,
-                        "change_text": _format_price_change(previous, price),
+                        "change_text": _format_price_change(previous_for_report, price),
                     }
                 )
 
-                if should_alert(p.get("last_alert_at"), cooldown_h, previous, price):
-                    text = f"Prisen er faldet for {p['name']}\nLink: {link['url']}\nFør: {previous:.2f} DKK\nNu: {price:.2f} DKK"
+                if should_alert(p.get("last_alert_at"), cooldown_h, previous_for_drop, price):
+                    text = f"Prisen er faldet for {p['name']}\nLink: {link['url']}\nFør: {previous_for_drop:.2f} DKK\nNu: {price:.2f} DKK"
                     print(f"🔔 {text}")
                     store.mark_alert_sent(p["id"])
             except urllib.error.URLError as exc:
@@ -308,7 +361,11 @@ def cmd_add_product(args: argparse.Namespace) -> None:
 
 def cmd_add_link(args: argparse.Namespace) -> None:
     store = JsonStore(Path(args.db))
-    link = store.add_link(args.product_id, args.url)
+    try:
+        link = store.add_link(args.product_id, args.url)
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return
     print(f"Tilføjet link [{link.id}] til produkt {link.product_id}")
 
 
