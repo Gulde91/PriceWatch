@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest import mock
 
 from pricewatch import (
     JsonStore,
@@ -8,6 +10,7 @@ from pricewatch import (
     _normalize_price,
     build_daily_report,
     extract_price,
+    fetch_html,
     should_alert,
 )
 
@@ -23,6 +26,22 @@ class PriceWatchTests(unittest.TestCase):
     def test_extract_prefers_lowest_candidate(self):
         html = 'Før 1.299,00 kr Nu 999,00 kr'
         self.assertEqual(extract_price(html), 999.0)
+
+
+    def test_extract_variant_price_from_url_query(self):
+        html = '\n'.join([
+            '{"id":34364359475259,"title":"3-pack","price":"69900"}',
+            '{"id":999,"title":"1-pack","price":"25000"}',
+        ])
+        # URL variant skal vinde over laveste globale kandidat
+        self.assertEqual(
+            extract_price(html + ' Før 250,00 kr Nu 699,00 kr', 'https://example.com/p?variant=34364359475259'),
+            699.0,
+        )
+
+    def test_extract_variant_price_handles_decimal_price(self):
+        html = '{"variantId":"34364359475259","price":"699.00"}'
+        self.assertEqual(extract_price(html, 'https://example.com/p?variant=34364359475259'), 699.0)
 
     def test_should_alert_on_drop(self):
         self.assertTrue(should_alert(None, 24, 1000.0, 950.0))
@@ -61,6 +80,22 @@ class PriceWatchTests(unittest.TestCase):
         )
         self.assertIn("Pris i dag: 499.00 DKK", report)
         self.assertIn("ændring: -10.00 DKK", report)
+
+
+    def test_fetch_html_retries_and_returns_clear_403_message(self):
+        with mock.patch("pricewatch.time.sleep"):
+            with mock.patch("pricewatch.urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+                url="https://example.com",
+                code=403,
+                msg="Forbidden",
+                hdrs=None,
+                fp=None,
+            )):
+                with self.assertRaises(urllib.error.URLError) as exc:
+                    fetch_html("https://example.com", retries=1)
+
+        self.assertIn("HTTP 403", str(exc.exception))
+        self.assertIn("blokerer", str(exc.exception))
 
     def test_previous_ok_price_before_date_ignores_same_day_values(self):
         with tempfile.TemporaryDirectory() as tmp:
