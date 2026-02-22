@@ -51,6 +51,35 @@ python3 pricewatch.py watch
 
 Alternativt anbefales cron én gang i døgnet.
 
+### Kør som cron job kl. 02:00
+
+Hvis din Raspberry Pi viser:
+- projektsti: `/home/alex/PriceWatch`
+- python: `/usr/bin/python3`
+
+så skal din cron-linje være:
+
+```cron
+0 2 * * * cd /home/alex/PriceWatch && /usr/bin/python3 pricewatch.py check >> /home/alex/PriceWatch/cron.log 2>&1
+```
+
+Du har allerede et andet job kl. 03:00, og det er helt fint — cron kan sagtens have begge linjer.
+
+Eksempel på `crontab -e` med begge jobs:
+
+```cron
+0 2 * * * cd /home/alex/PriceWatch && /usr/bin/python3 pricewatch.py check >> /home/alex/PriceWatch/cron.log 2>&1
+0 3 * * * /usr/bin/python3 /home/alex/funny_dates/send_mail.py
+```
+
+Efter du har gemt, verificér med:
+
+```bash
+crontab -l
+```
+
+Tip: hvis du bruger mail fra PriceWatch, kan du erstatte `check`-delen med hele kommandoen inkl. SMTP-parametre.
+
 ## Email-notifikation
 
 Scriptet sender en daglig mail (når SMTP-parametre gives) med dagens pris og ændring ift. dagen før for hvert link:
