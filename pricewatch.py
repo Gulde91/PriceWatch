@@ -20,6 +20,13 @@ USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "da-DK,da;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
 
 
 @dataclass
@@ -169,11 +176,24 @@ class JsonStore:
         return None
 
 
-def fetch_html(url: str, timeout: int = 20) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        body = response.read()
-    return body.decode("utf-8", errors="ignore")
+def fetch_html(url: str, timeout: int = 20, retries: int = 2) -> str:
+    req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                body = response.read()
+            return body.decode("utf-8", errors="ignore")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 403:
+                if attempt < retries:
+                    time.sleep(1 + attempt)
+                    continue
+                raise urllib.error.URLError(
+                    "HTTP 403 (forbidden). Sitet blokerer sandsynligvis automatiske requests; "
+                    "prøv et andet link (fx direkte produktside uden bot-beskyttelse)."
+                ) from exc
+            raise
 
 
 def _normalize_price(text: str) -> float | None:
