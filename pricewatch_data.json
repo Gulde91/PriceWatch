@@ -1,0 +1,47 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "name": "Classic merinould vandrestrømper",
+      "created_at": "2026-02-22T00:00:00+00:00",
+      "last_alert_at": null
+    },
+    {
+      "id": 2,
+      "name": "Bambus underbukser med gylp",
+      "created_at": "2026-02-22T00:00:00+00:00",
+      "last_alert_at": null
+    },
+    {
+      "id": 3,
+      "name": "Asivik Hiker JR 110-140 børnesovepose",
+      "created_at": "2026-02-22T00:00:00+00:00",
+      "last_alert_at": null
+    }
+  ],
+  "links": [
+    {
+      "id": 1,
+      "product_id": 1,
+      "url": "https://danishendurance.com/da/products/classic-merinould-vandrestroemper?variant=34364359475259",
+      "created_at": "2026-02-22T00:00:00+00:00"
+    },
+    {
+      "id": 2,
+      "product_id": 2,
+      "url": "https://danishendurance.com/da/products/bambus-underbukser-med-gylp?variant=40952944328763",
+      "created_at": "2026-02-22T00:00:00+00:00"
+    },
+    {
+      "id": 3,
+      "product_id": 3,
+      "url": "https://www.spejdersport.dk/asivik-hiker-jr-110-140-boernesovepose-ny?_gl=1*v23ekf*_up*MQ..*_gs*MQ..*_ga*MTc2OTQ2ODMzOS4xNzcxNjE4NzE1*_ga_ETQCB0DG84*czE3NzE2MTg3MTYkbzEkZzEkdDE3NzE2MTg3NDkkajI3JGwwJGgw&gclid=Cj0KCQiAqeDMBhDcARIsAJEbU9Rp6pQmIQil66xXOgIuFOFUi7NZGQmfQbMA6e6VkRTG2Omcah4Vn9QaAsOEEALw_wcB&gbraid=0AAAAAD-g0SXwPU7NeUlnPG6YKKWbWJOgI",
+      "created_at": "2026-02-22T00:00:00+00:00"
+    }
+  ],
+  "checks": [],
+  "meta": {
+    "next_product_id": 4,
+    "next_link_id": 4
+  }
+}
