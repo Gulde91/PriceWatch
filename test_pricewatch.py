@@ -27,6 +27,22 @@ class PriceWatchTests(unittest.TestCase):
         html = 'Før 1.299,00 kr Nu 999,00 kr'
         self.assertEqual(extract_price(html), 999.0)
 
+
+    def test_extract_variant_price_from_url_query(self):
+        html = '\n'.join([
+            '{"id":34364359475259,"title":"3-pack","price":"69900"}',
+            '{"id":999,"title":"1-pack","price":"25000"}',
+        ])
+        # URL variant skal vinde over laveste globale kandidat
+        self.assertEqual(
+            extract_price(html + ' Før 250,00 kr Nu 699,00 kr', 'https://example.com/p?variant=34364359475259'),
+            699.0,
+        )
+
+    def test_extract_variant_price_handles_decimal_price(self):
+        html = '{"variantId":"34364359475259","price":"699.00"}'
+        self.assertEqual(extract_price(html, 'https://example.com/p?variant=34364359475259'), 699.0)
+
     def test_should_alert_on_drop(self):
         self.assertTrue(should_alert(None, 24, 1000.0, 950.0))
         self.assertFalse(should_alert(None, 24, 1000.0, 1000.0))

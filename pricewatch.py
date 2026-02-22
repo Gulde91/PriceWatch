@@ -10,6 +10,7 @@ import smtplib
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
@@ -218,7 +219,38 @@ def _normalize_price(text: str) -> float | None:
     return value if value > 0 else None
 
 
-def extract_price(html: str) -> float | None:
+
+
+def _extract_variant_price(html: str, url: str) -> float | None:
+    variant_id = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("variant", [None])[0]
+    if not variant_id:
+        return None
+
+    escaped_variant_id = re.escape(str(variant_id))
+    patterns = [
+        rf'"id"\s*:\s*{escaped_variant_id}[^{{}}]*?"price"\s*:\s*"?([0-9][0-9\., ]+)"?',
+        rf'"variantId"\s*:\s*"?{escaped_variant_id}"?[^{{}}]*?"price"\s*:\s*"?([0-9][0-9\., ]+)"?',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, html, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = _normalize_price(match.group(1))
+        if value is not None:
+            # Shopify JSON bruger ofte "price" i øre/cents
+            if value >= 10000 and value.is_integer():
+                return value / 100
+            return value
+    return None
+
+
+def extract_price(html: str, url: str | None = None) -> float | None:
+    if url:
+        variant_price = _extract_variant_price(html, url)
+        if variant_price is not None:
+            return variant_price
+
     patterns = [
         r'<meta[^>]+property=["\']product:price:amount["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+itemprop=["\']price["\'][^>]+content=["\']([^"\']+)["\']',
@@ -319,7 +351,7 @@ def check_all(
         for link in links:
             try:
                 html = fetch_html(link["url"])
-                price = extract_price(html)
+                price = extract_price(html, link["url"])
                 if price is None:
                     store.save_check(p["id"], link["id"], link["url"], "error", None, "No price found")
                     print(f"⚠️  Ingen pris fundet: {p['name']} | {link['url']}")
