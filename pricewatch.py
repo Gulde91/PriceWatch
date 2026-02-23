@@ -52,13 +52,13 @@ def utc_now() -> str:
 class JsonStore:
     def __init__(self, path: Path):
         self.path = path
+        self.history = ProductHistoryStore(self.path.parent / "price_history")
         self.data = self._load()
 
     def _empty(self) -> dict[str, Any]:
         return {
             "products": [],
             "links": [],
-            "checks": [],
             "meta": {"next_product_id": 1, "next_link_id": 1},
         }
 
@@ -66,7 +66,6 @@ class JsonStore:
         data = self._empty()
         data["products"] = list(raw.get("products", []))
         data["links"] = list(raw.get("links", []))
-        data["checks"] = list(raw.get("checks", []))
         raw_meta = raw.get("meta", {}) if isinstance(raw.get("meta", {}), dict) else {}
         data["meta"]["next_product_id"] = int(raw_meta.get("next_product_id", 1))
         data["meta"]["next_link_id"] = int(raw_meta.get("next_link_id", 1))
@@ -123,24 +122,22 @@ class JsonStore:
         status: str,
         price: float | None,
         message: str | None = None,
+        checked_at: str | None = None,
     ) -> str:
-        checked_at = utc_now()
-        self.data["checks"].append(
-            {
-                "checked_at": checked_at,
-                "product_id": product_id,
-                "link_id": link_id,
-                "url": url,
-                "status": status,
-                "price": price,
-                "message": message,
-            }
+        checked_at = checked_at or utc_now()
+        self.history.append(
+            product_id=product_id,
+            checked_at=checked_at,
+            link_id=link_id,
+            url=url,
+            status=status,
+            price=price,
+            message=message,
         )
-        self.save()
         return checked_at
 
     def previous_ok_price(self, link_id: int) -> float | None:
-        ok_rows = [c for c in self.data["checks"] if c["link_id"] == link_id and c["status"] == "ok" and c["price"] is not None]
+        ok_rows = [c for c in self.history.read_all() if c["link_id"] == link_id and c["status"] == "ok" and c["price"] is not None]
         if len(ok_rows) < 2:
             return None
         return float(ok_rows[-2]["price"])
@@ -149,7 +146,7 @@ class JsonStore:
         current_date = dt.datetime.fromisoformat(current_checked_at).date()
         best: float | None = None
         best_dt: dt.datetime | None = None
-        for row in self.data["checks"]:
+        for row in self.history.read_all():
             if row.get("link_id") != link_id or row.get("status") != "ok" or row.get("price") is None:
                 continue
             checked_at_raw = row.get("checked_at")
@@ -176,6 +173,66 @@ class JsonStore:
                 return p
         return None
 
+
+
+class ProductHistoryStore:
+    def __init__(self, directory: Path):
+        self.directory = directory
+
+    def _path_for_product(self, product_id: int) -> Path:
+        return self.directory / f"product_{product_id}.txt"
+
+    def append(
+        self,
+        product_id: int,
+        checked_at: str,
+        link_id: int,
+        url: str,
+        status: str,
+        price: float | None,
+        message: str | None,
+    ) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        price_text = "" if price is None else f"{price:.6f}"
+        message_text = "" if message is None else message.replace("\n", " ")
+        line = f"{checked_at}\t{link_id}\t{status}\t{price_text}\t{url}\t{message_text}\n"
+        with self._path_for_product(product_id).open("a", encoding="utf-8") as fh:
+            fh.write(line)
+
+    def read_product(self, product_id: int) -> list[dict[str, Any]]:
+        path = self._path_for_product(product_id)
+        if not path.exists():
+            return []
+
+        rows: list[dict[str, Any]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t", 5)
+            if len(parts) < 6:
+                continue
+            checked_at, link_id, status, price_text, url, message_text = parts
+            rows.append(
+                {
+                    "checked_at": checked_at,
+                    "product_id": product_id,
+                    "link_id": int(link_id),
+                    "url": url,
+                    "status": status,
+                    "price": float(price_text) if price_text else None,
+                    "message": message_text or None,
+                }
+            )
+        return rows
+
+    def read_all(self) -> list[dict[str, Any]]:
+        if not self.directory.exists():
+            return []
+
+        rows: list[dict[str, Any]] = []
+        for path in sorted(self.directory.glob("product_*.txt")):
+            name = path.stem
+            product_id = int(name.split("_")[-1])
+            rows.extend(self.read_product(product_id))
+        return rows
 
 def fetch_html(url: str, timeout: int = 20, retries: int = 2) -> str:
     req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
@@ -451,7 +508,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
 
 def cmd_history(args: argparse.Namespace) -> None:
     store = JsonStore(Path(args.db))
-    rows = list(reversed(store.data["checks"]))[: args.limit]
+    rows = sorted(store.history.read_all(), key=lambda r: r["checked_at"], reverse=True)[: args.limit]
     if not rows:
         print("Ingen historik.")
         return

@@ -19,7 +19,9 @@ Efter gennemgang af kode + dokumentation er disse forbedringer lavet:
 
 ## Datafil
 
-Scriptet gemmer alt i `pricewatch_data.json` i projektmappen.
+Scriptet gemmer kun overblik over produkter/links i `pricewatch_data.json` i projektmappen.
+
+Prishistorik gemmes separat som tekstfiler i mappen `price_history/` (én fil per produkt, fx `price_history/product_1.txt`).
 
 ## Kom i gang
 
