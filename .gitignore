@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Runtime artifacts
+cron.log
+
+# Local runtime data (should not block git pull)
+pricewatch_data.json
+price_history/

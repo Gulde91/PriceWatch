@@ -19,7 +19,17 @@ Efter gennemgang af kode + dokumentation er disse forbedringer lavet:
 
 ## Datafil
 
-Scriptet gemmer alt i `pricewatch_data.json` i projektmappen.
+Scriptet gemmer kun overblik over produkter/links i en lokal `pricewatch_data.json` i projektmappen.
+
+Prishistorik gemmes separat som tekstfiler i mappen `price_history/` (én fil per produkt, fx `price_history/product_1.txt`).
+
+> Tip: `pricewatch_data.json` og `price_history/` er nu ignoreret af git, så dine lokale prisdata ikke blokerer `git pull`.
+
+Hvis du starter fra ny clone, kan du oprette en tom datafil fra template:
+
+```bash
+cp pricewatch_data.example.json pricewatch_data.json
+```
 
 ## Kom i gang
 

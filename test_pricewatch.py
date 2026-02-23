@@ -101,37 +101,21 @@ class PriceWatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "data.json"
             store = JsonStore(db)
-            store.data["checks"] = [
-                {
-                    "checked_at": "2026-01-10T08:00:00+00:00",
-                    "product_id": 1,
-                    "link_id": 1,
-                    "url": "https://example.com/a",
-                    "status": "ok",
-                    "price": 100.0,
-                    "message": None,
-                },
-                {
-                    "checked_at": "2026-01-11T08:00:00+00:00",
-                    "product_id": 1,
-                    "link_id": 1,
-                    "url": "https://example.com/a",
-                    "status": "ok",
-                    "price": 95.0,
-                    "message": None,
-                },
-                {
-                    "checked_at": "2026-01-11T14:00:00+00:00",
-                    "product_id": 1,
-                    "link_id": 1,
-                    "url": "https://example.com/a",
-                    "status": "ok",
-                    "price": 90.0,
-                    "message": None,
-                },
-            ]
+            store.save_check(1, 1, "https://example.com/a", "ok", 100.0, checked_at="2026-01-10T08:00:00+00:00")
+            store.save_check(1, 1, "https://example.com/a", "ok", 95.0, checked_at="2026-01-11T08:00:00+00:00")
+            store.save_check(1, 1, "https://example.com/a", "ok", 90.0, checked_at="2026-01-11T14:00:00+00:00")
             previous = store.previous_ok_price_before_date(1, "2026-01-11T14:00:00+00:00")
             self.assertEqual(previous, 100.0)
+
+    def test_save_check_writes_separate_product_history_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            store.save_check(7, 2, "https://example.com/a", "ok", 123.45, checked_at="2026-01-10T08:00:00+00:00")
+
+            history_file = Path(tmp) / "price_history" / "product_7.txt"
+            self.assertTrue(history_file.exists())
+            self.assertIn("2026-01-10T08:00:00+00:00", history_file.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
