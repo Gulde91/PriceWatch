@@ -1,0 +1,7 @@
+{
+  "PRICEWATCH_SENDER": "din_mail@gmail.com",
+  "PRICEWATCH_APP_PASSWORD": "din_app_kode",
+  "PRICEWATCH_RECIPIENT": "din_mail@gmail.com",
+  "PRICEWATCH_PROJECT_DIR": "/home/alex/PriceWatch",
+  "PRICEWATCH_PYTHON_BIN": "/usr/bin/python3"
+}

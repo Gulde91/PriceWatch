@@ -74,6 +74,22 @@ Eksempel på `crontab -e` med begge jobs:
 0 3 * * * /usr/bin/python3 /home/alex/funny_dates/send_mail.py
 ```
 
+Hvis du bruger `send_mail.py` fra dette repo, så undgå at lægge credentials i selve scriptet.
+Brug i stedet en **lokal** fil `send_mail.local.json` (som er ignoreret af git):
+
+```bash
+cp send_mail.local.example.json send_mail.local.json
+```
+
+Udfyld derefter filen med dine egne værdier på Pi'en.
+
+`send_mail.py` læser følgende nøgler (miljøvariabler har forrang):
+- `PRICEWATCH_SENDER`
+- `PRICEWATCH_APP_PASSWORD`
+- `PRICEWATCH_RECIPIENT`
+- `PRICEWATCH_PROJECT_DIR` (valgfri, default: `/home/alex/PriceWatch`)
+- `PRICEWATCH_PYTHON_BIN` (valgfri, default: `/usr/bin/python3`)
+
 Efter du har gemt, verificér med:
 
 ```bash
