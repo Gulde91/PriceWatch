@@ -12,6 +12,8 @@ from email.message import EmailMessage
 from pathlib import Path
 from subprocess import check_output
 
+from pricewatch import report_text_to_html
+
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 DEFAULT_PROJECT_DIR = Path("/home/alex/PriceWatch")
@@ -74,6 +76,7 @@ def main() -> None:
     msg["From"] = sender
     msg["To"] = recipient
     msg.set_content(output)
+    msg.add_alternative(report_text_to_html(output), subtype="html")
 
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
         smtp.login(sender, app_password)

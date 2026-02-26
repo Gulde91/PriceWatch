@@ -9,6 +9,7 @@ from pricewatch import (
     _format_price_change,
     _normalize_price,
     build_daily_report,
+    report_text_to_html,
     extract_price,
     fetch_html,
     should_alert,
@@ -81,6 +82,12 @@ class PriceWatchTests(unittest.TestCase):
         self.assertIn("Pris i dag: 499.00 DKK", report)
         self.assertIn("ændring: -10.00 DKK", report)
 
+
+
+    def test_report_text_to_html_replaces_url_with_clickable_link(self):
+        html_report = report_text_to_html("Link: https://example.com/a?x=1&y=2")
+        self.assertIn('href="https://example.com/a?x=1&amp;y=2"', html_report)
+        self.assertIn('>Åbn link<', html_report)
 
     def test_fetch_html_retries_and_returns_clear_403_message(self):
         with mock.patch("pricewatch.time.sleep"):

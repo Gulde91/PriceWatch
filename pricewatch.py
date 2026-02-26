@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import html
 import json
 import re
 import smtplib
@@ -340,11 +341,35 @@ def send_email_alert(smtp_host: str, smtp_port: int, smtp_user: str, smtp_passwo
     msg["From"] = smtp_user
     msg["To"] = to_email
     msg.set_content(body)
+    msg.add_alternative(report_text_to_html(body), subtype="html")
 
     with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
         server.starttls()
         server.login(smtp_user, smtp_password)
         server.send_message(msg)
+
+
+def report_text_to_html(report_text: str) -> str:
+    url_pattern = re.compile(r"https?://[^\s]+")
+    html_lines: list[str] = []
+
+    for line in report_text.splitlines():
+        parts: list[str] = []
+        last_index = 0
+        for match in url_pattern.finditer(line):
+            parts.append(html.escape(line[last_index:match.start()]))
+            url = match.group(0)
+            parts.append(f'<a href="{html.escape(url, quote=True)}">Åbn link</a>')
+            last_index = match.end()
+        parts.append(html.escape(line[last_index:]))
+        html_lines.append("".join(parts))
+
+    body_html = "<br>\n".join(html_lines)
+    return (
+        "<html><body>"
+        f"<p style=\"font-family:Arial,sans-serif;white-space:pre-wrap;\">{body_html}</p>"
+        "</body></html>"
+    )
 
 
 def _format_price_change(previous: float | None, current: float) -> str:
