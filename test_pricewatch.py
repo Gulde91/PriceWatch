@@ -114,6 +114,18 @@ class PriceWatchTests(unittest.TestCase):
             previous = store.previous_ok_price_before_date(1, "2026-01-11T14:00:00+00:00")
             self.assertEqual(previous, 100.0)
 
+
+    def test_save_check_history_file_contains_only_timestamp_and_price(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            product = store.add_product("Sovepose")
+            store.save_check(product.id, 2, "https://example.com/a", "ok", 123.45, checked_at="2026-01-10T08:00:00+00:00")
+
+            history_file = Path(tmp) / "price_history" / "sovepose__1.txt"
+            line = history_file.read_text(encoding="utf-8").strip()
+            self.assertEqual(line, "2026-01-10T08:00:00+00:00\t123.450000")
+
     def test_save_check_writes_separate_product_history_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "data.json"
