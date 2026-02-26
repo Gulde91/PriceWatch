@@ -62,6 +62,7 @@ def main() -> None:
             str(project_dir / "pricewatch.py"),
             "check",
         ],
+        cwd=project_dir,
         text=True,
     )
 
