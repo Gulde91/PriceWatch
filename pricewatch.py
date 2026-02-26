@@ -126,8 +126,11 @@ class JsonStore:
         checked_at: str | None = None,
     ) -> str:
         checked_at = checked_at or utc_now()
+        product = self.product_by_id(product_id)
+        product_name = str(product["name"]) if product else f"product_{product_id}"
         self.history.append(
             product_id=product_id,
+            product_name=product_name,
             checked_at=checked_at,
             link_id=link_id,
             url=url,
@@ -180,12 +183,35 @@ class ProductHistoryStore:
     def __init__(self, directory: Path):
         self.directory = directory
 
-    def _path_for_product(self, product_id: int) -> Path:
+    def _slugify_product_name(self, product_name: str) -> str:
+        slug = re.sub(r"[^\w\-]+", "_", product_name.strip().lower(), flags=re.UNICODE)
+        slug = slug.strip("_")
+        return slug or "product"
+
+    def _path_for_product(self, product_id: int, product_name: str | None = None) -> Path:
+        if product_name:
+            slug = self._slugify_product_name(product_name)
+            return self.directory / f"{slug}__{product_id}.txt"
         return self.directory / f"product_{product_id}.txt"
+
+    def _find_existing_path_for_product(self, product_id: int, product_name: str | None = None) -> Path:
+        preferred = self._path_for_product(product_id, product_name)
+        if preferred.exists():
+            return preferred
+
+        legacy = self._path_for_product(product_id)
+        if legacy.exists():
+            return legacy
+
+        matches = sorted(self.directory.glob(f"*__{product_id}.txt")) if self.directory.exists() else []
+        if matches:
+            return matches[0]
+        return preferred
 
     def append(
         self,
         product_id: int,
+        product_name: str,
         checked_at: str,
         link_id: int,
         url: str,
@@ -197,11 +223,16 @@ class ProductHistoryStore:
         price_text = "" if price is None else f"{price:.6f}"
         message_text = "" if message is None else message.replace("\n", " ")
         line = f"{checked_at}\t{link_id}\t{status}\t{price_text}\t{url}\t{message_text}\n"
-        with self._path_for_product(product_id).open("a", encoding="utf-8") as fh:
+        path = self._find_existing_path_for_product(product_id, product_name)
+        if path.name.startswith("product_"):
+            path = self._path_for_product(product_id, product_name)
+            if self._path_for_product(product_id).exists():
+                self._path_for_product(product_id).replace(path)
+        with path.open("a", encoding="utf-8") as fh:
             fh.write(line)
 
-    def read_product(self, product_id: int) -> list[dict[str, Any]]:
-        path = self._path_for_product(product_id)
+    def read_product(self, product_id: int, product_name: str | None = None) -> list[dict[str, Any]]:
+        path = self._find_existing_path_for_product(product_id, product_name)
         if not path.exists():
             return []
 
@@ -229,9 +260,14 @@ class ProductHistoryStore:
             return []
 
         rows: list[dict[str, Any]] = []
-        for path in sorted(self.directory.glob("product_*.txt")):
-            name = path.stem
-            product_id = int(name.split("_")[-1])
+        for path in sorted(self.directory.glob("*.txt")):
+            match = re.search(r"__(\d+)$", path.stem)
+            if match:
+                product_id = int(match.group(1))
+            elif path.stem.startswith("product_"):
+                product_id = int(path.stem.split("_")[-1])
+            else:
+                continue
             rows.extend(self.read_product(product_id))
         return rows
 
