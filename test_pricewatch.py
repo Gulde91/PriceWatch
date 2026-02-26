@@ -89,6 +89,11 @@ class PriceWatchTests(unittest.TestCase):
         self.assertIn('href="https://example.com/a?x=1&amp;y=2"', html_report)
         self.assertIn('>Åbn link<', html_report)
 
+    def test_report_text_to_html_preserves_closing_parenthesis_after_url(self):
+        html_report = report_text_to_html("Classic merinould vandrestrømper (https://example.com/a) 390.00 DKK")
+        self.assertIn('href="https://example.com/a"', html_report)
+        self.assertIn('Åbn link</a>) 390.00 DKK', html_report)
+
     def test_fetch_html_retries_and_returns_clear_403_message(self):
         with mock.patch("pricewatch.time.sleep"):
             with mock.patch("pricewatch.urllib.request.urlopen", side_effect=urllib.error.HTTPError(

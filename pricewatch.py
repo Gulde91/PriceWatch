@@ -419,6 +419,7 @@ def send_email_alert(smtp_host: str, smtp_port: int, smtp_user: str, smtp_passwo
 
 def report_text_to_html(report_text: str) -> str:
     url_pattern = re.compile(r"https?://[^\s]+")
+    trailing_url_punctuation = ".,;:!?)]"
     html_lines: list[str] = []
 
     for line in report_text.splitlines():
@@ -426,8 +427,11 @@ def report_text_to_html(report_text: str) -> str:
         last_index = 0
         for match in url_pattern.finditer(line):
             parts.append(html.escape(line[last_index:match.start()]))
-            url = match.group(0)
+            matched_url = match.group(0)
+            url = matched_url.rstrip(trailing_url_punctuation)
+            trailing_text = matched_url[len(url):]
             parts.append(f'<a href="{html.escape(url, quote=True)}">Åbn link</a>')
+            parts.append(html.escape(trailing_text))
             last_index = match.end()
         parts.append(html.escape(line[last_index:]))
         html_lines.append("".join(parts))
