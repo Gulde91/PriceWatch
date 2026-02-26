@@ -118,9 +118,10 @@ class PriceWatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "data.json"
             store = JsonStore(db)
-            store.save_check(7, 2, "https://example.com/a", "ok", 123.45, checked_at="2026-01-10T08:00:00+00:00")
+            product = store.add_product("Sovepose")
+            store.save_check(product.id, 2, "https://example.com/a", "ok", 123.45, checked_at="2026-01-10T08:00:00+00:00")
 
-            history_file = Path(tmp) / "price_history" / "product_7.txt"
+            history_file = Path(tmp) / "price_history" / "sovepose__1.txt"
             self.assertTrue(history_file.exists())
             self.assertIn("2026-01-10T08:00:00+00:00", history_file.read_text(encoding="utf-8"))
 
