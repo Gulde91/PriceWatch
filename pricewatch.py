@@ -141,17 +141,30 @@ class JsonStore:
         return checked_at
 
     def previous_ok_price(self, link_id: int) -> float | None:
-        ok_rows = [c for c in self.history.read_all() if c["link_id"] == link_id and c["status"] == "ok" and c["price"] is not None]
+        product_id = self.product_id_for_link(link_id)
+        ok_rows = [
+            c
+            for c in self.history.read_all()
+            if c["status"] == "ok"
+            and c["price"] is not None
+            and (
+                c.get("link_id") == link_id
+                or (c.get("link_id") is None and (product_id is None or c["product_id"] == product_id))
+            )
+        ]
         if len(ok_rows) < 2:
             return None
         return float(ok_rows[-2]["price"])
 
     def previous_ok_price_before_date(self, link_id: int, current_checked_at: str) -> float | None:
         current_date = dt.datetime.fromisoformat(current_checked_at).date()
+        product_id = self.product_id_for_link(link_id)
         best: float | None = None
         best_dt: dt.datetime | None = None
         for row in self.history.read_all():
-            if row.get("link_id") != link_id or row.get("status") != "ok" or row.get("price") is None:
+            same_link = row.get("link_id") == link_id
+            same_product_row = row.get("link_id") is None and (product_id is None or row.get("product_id") == product_id)
+            if (not same_link and not same_product_row) or row.get("status") != "ok" or row.get("price") is None:
                 continue
             checked_at_raw = row.get("checked_at")
             if not isinstance(checked_at_raw, str):
@@ -163,6 +176,12 @@ class JsonStore:
                 best_dt = checked_at
                 best = float(row["price"])
         return best
+
+    def product_id_for_link(self, link_id: int) -> int | None:
+        for link in self.data["links"]:
+            if link["id"] == link_id:
+                return int(link["product_id"])
+        return None
 
     def mark_alert_sent(self, product_id: int) -> None:
         for p in self.data["products"]:
@@ -221,8 +240,7 @@ class ProductHistoryStore:
     ) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         price_text = "" if price is None else f"{price:.6f}"
-        message_text = "" if message is None else message.replace("\n", " ")
-        line = f"{checked_at}\t{link_id}\t{status}\t{price_text}\t{url}\t{message_text}\n"
+        line = f"{checked_at}\t{price_text}\n"
         path = self._find_existing_path_for_product(product_id, product_name)
         if path.name.startswith("product_"):
             path = self._path_for_product(product_id, product_name)
@@ -238,21 +256,35 @@ class ProductHistoryStore:
 
         rows: list[dict[str, Any]] = []
         for line in path.read_text(encoding="utf-8").splitlines():
-            parts = line.split("\t", 5)
-            if len(parts) < 6:
+            parts = line.split("\t")
+            if len(parts) == 2:
+                checked_at, price_text = parts
+                rows.append(
+                    {
+                        "checked_at": checked_at,
+                        "product_id": product_id,
+                        "link_id": None,
+                        "url": None,
+                        "status": "ok",
+                        "price": float(price_text) if price_text else None,
+                        "message": None,
+                    }
+                )
                 continue
-            checked_at, link_id, status, price_text, url, message_text = parts
-            rows.append(
-                {
-                    "checked_at": checked_at,
-                    "product_id": product_id,
-                    "link_id": int(link_id),
-                    "url": url,
-                    "status": status,
-                    "price": float(price_text) if price_text else None,
-                    "message": message_text or None,
-                }
-            )
+
+            if len(parts) >= 6:
+                checked_at, link_id, status, price_text, url, message_text = parts[:6]
+                rows.append(
+                    {
+                        "checked_at": checked_at,
+                        "product_id": product_id,
+                        "link_id": int(link_id),
+                        "url": url,
+                        "status": status,
+                        "price": float(price_text) if price_text else None,
+                        "message": message_text or None,
+                    }
+                )
         return rows
 
     def read_all(self) -> list[dict[str, Any]]:
