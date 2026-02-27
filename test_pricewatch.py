@@ -120,7 +120,7 @@ class PriceWatchTests(unittest.TestCase):
             self.assertEqual(previous, 100.0)
 
 
-    def test_save_check_history_file_contains_only_timestamp_and_price(self):
+    def test_save_check_history_file_contains_compact_fields_without_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "data.json"
             store = JsonStore(db)
@@ -129,7 +129,29 @@ class PriceWatchTests(unittest.TestCase):
 
             history_file = Path(tmp) / "price_history" / "sovepose__1.txt"
             line = history_file.read_text(encoding="utf-8").strip()
-            self.assertEqual(line, "2026-01-10T08:00:00+00:00\t123.450000")
+            self.assertEqual(line, "2026-01-10T08:00:00+00:00\t2\tok\t123.450000")
+
+    def test_error_status_and_message_are_persisted_in_compact_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            product = store.add_product("Sovepose")
+            store.save_check(
+                product.id,
+                2,
+                "https://example.com/a",
+                "error",
+                None,
+                message="No price found",
+                checked_at="2026-01-10T09:00:00+00:00",
+            )
+
+            rows = store.history.read_product(product.id, product.name)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["status"], "error")
+            self.assertEqual(rows[0]["message"], "No price found")
+            self.assertIsNone(rows[0]["price"])
+            self.assertIsNone(rows[0]["url"])
 
     def test_save_check_writes_separate_product_history_file(self):
         with tempfile.TemporaryDirectory() as tmp:

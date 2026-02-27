@@ -240,7 +240,8 @@ class ProductHistoryStore:
     ) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         price_text = "" if price is None else f"{price:.6f}"
-        line = f"{checked_at}\t{price_text}\n"
+        safe_message = (message or "").replace("\t", " ").replace("\n", " ").strip()
+        line = f"{checked_at}\t{link_id}\t{status}\t{price_text}\t{safe_message}\n"
         path = self._find_existing_path_for_product(product_id, product_name)
         if path.name.startswith("product_"):
             path = self._path_for_product(product_id, product_name)
@@ -280,6 +281,21 @@ class ProductHistoryStore:
                         "product_id": product_id,
                         "link_id": int(link_id),
                         "url": url,
+                        "status": status,
+                        "price": float(price_text) if price_text else None,
+                        "message": message_text or None,
+                    }
+                )
+                continue
+
+            if len(parts) >= 5:
+                checked_at, link_id, status, price_text, message_text = parts[:5]
+                rows.append(
+                    {
+                        "checked_at": checked_at,
+                        "product_id": product_id,
+                        "link_id": int(link_id),
+                        "url": None,
                         "status": status,
                         "price": float(price_text) if price_text else None,
                         "message": message_text or None,
