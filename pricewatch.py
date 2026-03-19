@@ -109,6 +109,16 @@ class JsonStore:
         self.save()
         return ProductLink(id=item["id"], product_id=item["product_id"], url=item["url"], created_at=item["created_at"])
 
+    def remove_product(self, product_id: int) -> tuple[dict[str, Any], int]:
+        product = self.product_by_id(product_id)
+        if product is None:
+            raise ValueError(f"Produkt med id={product_id} findes ikke")
+        removed_links = [l for l in self.data["links"] if l["product_id"] == product_id]
+        self.data["products"] = [p for p in self.data["products"] if p["id"] != product_id]
+        self.data["links"] = [l for l in self.data["links"] if l["product_id"] != product_id]
+        self.save()
+        return product, len(removed_links)
+
     def products(self) -> list[dict[str, Any]]:
         return list(self.data["products"])
 
@@ -318,6 +328,22 @@ class ProductHistoryStore:
                 continue
             rows.extend(self.read_product(product_id))
         return rows
+
+    def delete_product_history(self, product_id: int) -> int:
+        if not self.directory.exists():
+            return 0
+
+        deleted = 0
+        candidates = [self.directory / f"product_{product_id}.txt", *self.directory.glob(f"*__{product_id}.txt")]
+        seen: set[Path] = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            if path.exists():
+                path.unlink()
+                deleted += 1
+        return deleted
 
 def fetch_html(url: str, timeout: int = 20, retries: int = 2) -> str:
     req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
@@ -607,6 +633,21 @@ def cmd_list(args: argparse.Namespace) -> None:
             print(f"  - [{l['id']}] {l['url']}")
 
 
+def cmd_remove_product(args: argparse.Namespace) -> None:
+    store = JsonStore(Path(args.db))
+    try:
+        product, removed_links_count = store.remove_product(args.product_id)
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return
+    deleted_history_files = store.history.delete_product_history(args.product_id)
+    print(
+        "Fjernet produkt "
+        f"[{product['id']}] {product['name']} "
+        f"(links fjernet: {removed_links_count}, historikfiler slettet: {deleted_history_files})"
+    )
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     store = JsonStore(Path(args.db))
     check_all(store, args.cooldown_h, args.email, args.smtp_host, args.smtp_port, args.smtp_user, args.smtp_password)
@@ -648,6 +689,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_link.add_argument("--product-id", required=True, type=int)
     add_link.add_argument("--url", required=True)
     add_link.set_defaults(func=cmd_add_link)
+
+    remove_product = sub.add_parser("remove-product", help="Fjern et produkt inkl. links og historik")
+    remove_product.add_argument("--product-id", required=True, type=int)
+    remove_product.set_defaults(func=cmd_remove_product)
 
     show_list = sub.add_parser("list", help="Vis produkter og links")
     show_list.set_defaults(func=cmd_list)
