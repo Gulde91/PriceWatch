@@ -41,6 +41,9 @@ python3 pricewatch.py check
 
 # 5) Se historik
 python3 pricewatch.py history --limit 20
+
+# 6) Fjern produkt-overvågning (inkl. links + historik for produktet)
+python3 pricewatch.py remove-product --product-id 1
 ```
 
 ## Daglig drift på Raspberry Pi

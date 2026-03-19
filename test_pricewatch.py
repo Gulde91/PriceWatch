@@ -164,6 +164,35 @@ class PriceWatchTests(unittest.TestCase):
             self.assertTrue(history_file.exists())
             self.assertIn("2026-01-10T08:00:00+00:00", history_file.read_text(encoding="utf-8"))
 
+    def test_remove_product_removes_product_and_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            product = store.add_product("Sovepose")
+            store.add_link(product.id, "https://example.com/a")
+            store.add_link(product.id, "https://example.com/b")
+
+            removed_product, removed_links_count = store.remove_product(product.id)
+
+            self.assertEqual(removed_product["name"], "Sovepose")
+            self.assertEqual(removed_links_count, 2)
+            self.assertEqual(store.products(), [])
+            self.assertEqual(store.links_for_product(product.id), [])
+
+    def test_remove_product_history_deletes_history_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            product = store.add_product("Sovepose")
+            store.save_check(product.id, 2, "https://example.com/a", "ok", 123.45, checked_at="2026-01-10T08:00:00+00:00")
+            history_file = Path(tmp) / "price_history" / "sovepose__1.txt"
+            self.assertTrue(history_file.exists())
+
+            deleted_files_count = store.history.delete_product_history(product.id)
+
+            self.assertEqual(deleted_files_count, 1)
+            self.assertFalse(history_file.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
