@@ -109,6 +109,16 @@ class PriceWatchTests(unittest.TestCase):
         self.assertIn("HTTP 403", str(exc.exception))
         self.assertIn("blokerer", str(exc.exception))
 
+    def test_fetch_html_maps_tunnel_403_to_clear_message(self):
+        tunnel_error = urllib.error.URLError("Tunnel connection failed: 403 Forbidden")
+        with mock.patch("pricewatch.time.sleep"):
+            with mock.patch("pricewatch.urllib.request.urlopen", side_effect=tunnel_error):
+                with self.assertRaises(urllib.error.URLError) as exc:
+                    fetch_html("https://example.com", retries=1)
+
+        self.assertIn("HTTP 403", str(exc.exception))
+        self.assertIn("blokerer", str(exc.exception))
+
     def test_previous_ok_price_before_date_ignores_same_day_values(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "data.json"

@@ -363,6 +363,17 @@ def fetch_html(url: str, timeout: int = 20, retries: int = 2) -> str:
                     "prøv et andet link (fx direkte produktside uden bot-beskyttelse)."
                 ) from exc
             raise
+        except urllib.error.URLError as exc:
+            reason = str(getattr(exc, "reason", exc))
+            if "403" in reason and "forbidden" in reason.lower():
+                if attempt < retries:
+                    time.sleep(1 + attempt)
+                    continue
+                raise urllib.error.URLError(
+                    "HTTP 403 (forbidden). Sitet blokerer sandsynligvis automatiske requests; "
+                    "prøv et andet link (fx direkte produktside uden bot-beskyttelse)."
+                ) from exc
+            raise
 
 
 def _normalize_price(text: str) -> float | None:
