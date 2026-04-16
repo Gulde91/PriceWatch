@@ -9,9 +9,11 @@ from pricewatch import (
     _format_price_change,
     _normalize_price,
     build_daily_report,
+    check_all,
     report_text_to_html,
     extract_price,
     fetch_html,
+    is_probably_blocked_page,
     should_alert,
 )
 
@@ -27,6 +29,13 @@ class PriceWatchTests(unittest.TestCase):
     def test_extract_prefers_lowest_candidate(self):
         html = 'Før 1.299,00 kr Nu 999,00 kr'
         self.assertEqual(extract_price(html), 999.0)
+
+    def test_extract_prefers_product_meta_over_unrelated_lowest_price(self):
+        html = '\n'.join([
+            '<meta itemprop="price" content="4999.00">',
+            'Tilbehør fra 49,00 kr',
+        ])
+        self.assertEqual(extract_price(html), 4999.0)
 
 
     def test_extract_variant_price_from_url_query(self):
@@ -118,6 +127,26 @@ class PriceWatchTests(unittest.TestCase):
 
         self.assertIn("HTTP 403", str(exc.exception))
         self.assertIn("blokerer", str(exc.exception))
+
+    def test_is_probably_blocked_page_detects_captcha_or_cloudflare(self):
+        self.assertTrue(is_probably_blocked_page("<html>Attention Required! Cloudflare</html>"))
+        self.assertTrue(is_probably_blocked_page("<html>Please verify you are human (CAPTCHA)</html>"))
+        self.assertFalse(is_probably_blocked_page("<html><meta itemprop='price' content='4999.00'></html>"))
+
+    def test_check_all_marks_blocked_page_as_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "data.json"
+            store = JsonStore(db)
+            product = store.add_product("Sovepose")
+            store.add_link(product.id, "https://example.com/a")
+
+            with mock.patch("pricewatch.fetch_html", return_value="<html>Access denied - captcha</html>"):
+                check_all(store, 24, None, None, 587, None, None)
+
+            rows = store.history.read_product(product.id, product.name)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["status"], "error")
+            self.assertIn("bot-beskyttelse", rows[0]["message"])
 
     def test_previous_ok_price_before_date_ignores_same_day_values(self):
         with tempfile.TemporaryDirectory() as tmp:
