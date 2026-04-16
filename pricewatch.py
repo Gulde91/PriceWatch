@@ -376,6 +376,21 @@ def fetch_html(url: str, timeout: int = 20, retries: int = 2) -> str:
             raise
 
 
+def is_probably_blocked_page(html: str) -> bool:
+    lowered = html.lower()
+    block_markers = [
+        "captcha",
+        "cloudflare",
+        "attention required",
+        "verify you are human",
+        "adgang nægtet",
+        "access denied",
+        "robot check",
+        "bot protection",
+    ]
+    return any(marker in lowered for marker in block_markers)
+
+
 def _normalize_price(text: str) -> float | None:
     cleaned = text.strip().replace("\xa0", " ")
     cleaned = re.sub(r"[^0-9,\. ]", "", cleaned).strip()
@@ -430,19 +445,36 @@ def extract_price(html: str, url: str | None = None) -> float | None:
         if variant_price is not None:
             return variant_price
 
-    patterns = [
+    structured_patterns = [
         r'<meta[^>]+property=["\']product:price:amount["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+itemprop=["\']price["\'][^>]+content=["\']([^"\']+)["\']',
+        r'"offers"\s*:\s*\{[^{}]*?"price"\s*:\s*"?([0-9][0-9\., ]+)"?',
         r'"price"\s*:\s*"?([0-9][0-9\., ]+)"?',
-        r'([0-9]{1,3}(?:[\. ]?[0-9]{3})*(?:,[0-9]{2})?)\s*(?:kr\.?|DKK|€|EUR|\$)',
     ]
-    candidates: list[float] = []
-    for pattern in patterns:
+
+    for pattern in structured_patterns:
         for match in re.finditer(pattern, html, flags=re.IGNORECASE):
             candidate = _normalize_price(match.group(1))
             if candidate is not None:
-                candidates.append(candidate)
-    return min(candidates) if candidates else None
+                return candidate
+
+    now_price_match = re.search(
+        r'før\s*([0-9]{1,3}(?:[\. ]?[0-9]{3})*(?:,[0-9]{2})?)\s*(?:kr\.?|DKK|€|EUR|\$)[^\n]{0,80}?nu\s*([0-9]{1,3}(?:[\. ]?[0-9]{3})*(?:,[0-9]{2})?)\s*(?:kr\.?|DKK|€|EUR|\$)',
+        html,
+        flags=re.IGNORECASE,
+    )
+    if now_price_match:
+        now_price = _normalize_price(now_price_match.group(2))
+        if now_price is not None:
+            return now_price
+
+    fallback_pattern = r'([0-9]{1,3}(?:[\. ]?[0-9]{3})*(?:,[0-9]{2})?)\s*(?:kr\.?|DKK|€|EUR|\$)'
+    for match in re.finditer(fallback_pattern, html, flags=re.IGNORECASE):
+        candidate = _normalize_price(match.group(1))
+        if candidate is not None:
+            return candidate
+
+    return None
 
 
 def should_alert(last_alert_at: str | None, cooldown_h: int, previous_price: float | None, new_price: float) -> bool:
@@ -558,6 +590,19 @@ def check_all(
         for link in links:
             try:
                 html = fetch_html(link["url"])
+                if is_probably_blocked_page(html):
+                    msg = "Mulig bot-beskyttelse/captcha-side i stedet for produktside"
+                    store.save_check(p["id"], link["id"], link["url"], "error", None, msg)
+                    print(f"⚠️  Blokeret side opdaget: {p['name']} | {link['url']}")
+                    daily_rows.append(
+                        {
+                            "product_name": p["name"],
+                            "url": link["url"],
+                            "status": "error",
+                            "message": msg,
+                        }
+                    )
+                    continue
                 price = extract_price(html, link["url"])
                 if price is None:
                     store.save_check(p["id"], link["id"], link["url"], "error", None, "No price found")
